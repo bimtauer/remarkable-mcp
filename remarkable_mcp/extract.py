@@ -310,7 +310,7 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
     Returns the full text content of the PDF.
     """
     try:
-        import fitz  # PyMuPDF
+        import pymupdf as fitz  # PyMuPDF
 
         text_parts = []
         with fitz.open(pdf_path) as doc:
@@ -1031,7 +1031,7 @@ def _svg_string_to_png(
 
     output_width, output_height = _cap_pixels(output_width, output_height)
     try:
-        import fitz
+        import pymupdf as fitz
     except ImportError:
         logger.error(
             "SVG rasterization requires PyMuPDF. Reinstall remarkable-mcp so its "
@@ -1602,7 +1602,7 @@ def _render_pdf_page_to_png(
         PNG image bytes, or None on failure
     """
     try:
-        import fitz
+        import pymupdf as fitz
 
         width, height = _cap_pixels(width, height)
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -1642,7 +1642,7 @@ def render_tablet_pdf_page_to_png(
         PNG image bytes, or None on failure / out-of-range page.
     """
     try:
-        import fitz
+        import pymupdf as fitz
     except ImportError:
         return None
 
@@ -1768,7 +1768,7 @@ def render_merged_page_from_extracted_document(
     """Render a merged page from an already extracted document archive."""
     import io
 
-    import fitz
+    import pymupdf as fitz
     from PIL import Image as PILImage
 
     # Find the PDF file in the extracted directory. If multiple are present

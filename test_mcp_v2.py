@@ -130,7 +130,7 @@ async def test_one_server_serves_modern_and_legacy_catalogs():
 )
 async def test_export_resource_link_works_in_both_protocol_eras(mode, expected_version):
     """Large export content stays behind a ResourceLink in both SDK2 modes."""
-    import fitz
+    import pymupdf as fitz
     from mcp import types
 
     from remarkable_mcp.export_resources import export_store

@@ -237,7 +237,7 @@ def _is_pdf_payload(data: Optional[bytes]) -> bool:
 
 def _count_pdf_pages(pdf_bytes: bytes) -> int:
     """Count pages in a native PDF returned instead of an rmdoc archive."""
-    import fitz
+    import pymupdf as fitz
 
     with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
         return len(document)
