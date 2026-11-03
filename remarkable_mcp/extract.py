@@ -156,6 +156,18 @@ CONTENT_MARGIN = 50
 FULL_PAGE_TARGET_LONG_EDGE = 1872
 # Default long edge (px) when rasterizing a bare PDF page (no annotation layer).
 PDF_TARGET_LONG_EDGE = 2048
+# Ceiling for one rasterization (40 MP ~ 160 MB RGBA): a hostile page size, stray
+# stroke or large `scale` must not allocate gigabytes. Larger requests shrink to fit.
+MAX_RENDER_PIXELS = 40_000_000
+
+
+def _cap_pixels(width: int, height: int) -> Tuple[int, int]:
+    """Shrink ``width x height`` proportionally to at most MAX_RENDER_PIXELS."""
+    if width * height <= MAX_RENDER_PIXELS:
+        return width, height
+    factor = (MAX_RENDER_PIXELS / (width * height)) ** 0.5
+    return max(1, int(width * factor)), max(1, int(height * factor))
+
 
 # Cache TTL in seconds (5 minutes)
 CACHE_TTL_SECONDS = 300
@@ -1017,6 +1029,7 @@ def _svg_string_to_png(
     """Rasterize an SVG string to exact-size PNG bytes without system Cairo."""
     import io
 
+    output_width, output_height = _cap_pixels(output_width, output_height)
     try:
         import fitz
     except ImportError:
@@ -1591,6 +1604,7 @@ def _render_pdf_page_to_png(
     try:
         import fitz
 
+        width, height = _cap_pixels(width, height)
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         try:
             if page_index < 0 or page_index >= len(doc):
