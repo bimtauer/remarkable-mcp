@@ -285,10 +285,13 @@ def register_and_get_token(one_time_code: str) -> str:
     try:
         token_data = register_device(one_time_code)
 
-        # Save to ~/.rmapi for compatibility
+        # The device token grants full library access: owner-only, never via a symlink.
         rmapi_file = Path.home() / ".rmapi"
         token_json = json_module.dumps(token_data)
-        rmapi_file.write_text(token_json)
+        fd = os.open(rmapi_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        os.fchmod(fd, 0o600)  # O_CREAT's mode does not apply to an existing file
+        with os.fdopen(fd, "w") as f:
+            f.write(token_json)
 
         # A new token invalidates any cached cloud client.
         reset_client_cache()

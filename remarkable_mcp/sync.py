@@ -13,6 +13,7 @@ import logging
 import math
 import os
 import random
+import re
 import threading
 import time
 import uuid
@@ -27,6 +28,8 @@ import requests
 from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
+# Blob hashes are hex digests; fixtures use word-ish ids. No dots or separators.
+_BLOB_HASH = re.compile(r"[A-Za-z0-9_-]+")
 
 # Thread-local HTTP sessions for connection pooling under parallel traversal.
 _thread_local = threading.local()
@@ -458,7 +461,9 @@ class RemarkableClient:
             return
         try:
             cache_dir = _cache_dir()
-            cache_dir.mkdir(parents=True, exist_ok=True)
+            # Cached blobs are library content (handwriting, PDFs): owner-only.
+            cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            cache_dir.chmod(0o700)
             path = cache_dir / file_hash
             tmp = cache_dir / f".{file_hash}.{os.getpid()}.tmp"
             tmp.write_bytes(content)
@@ -472,6 +477,9 @@ class RemarkableClient:
         Blobs are content-addressed (immutable), so results are served from and
         stored in a local hash-keyed cache to make warm startups near-instant.
         """
+        # Hashes come from server-supplied indexes and become cache paths and URLs.
+        if not _BLOB_HASH.fullmatch(file_hash):
+            raise ValueError(f"Invalid blob hash in index: {file_hash!r}")
         cached = self._cache_read(file_hash)
         if cached is not None:
             return cached
