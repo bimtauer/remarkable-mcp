@@ -8,7 +8,7 @@ import zipfile
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import fitz
+import pymupdf as fitz
 import pytest
 from mcp import types
 

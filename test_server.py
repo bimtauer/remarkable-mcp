@@ -1208,7 +1208,7 @@ class TestMergedRendering:
 
 def _make_synthetic_pdf(pages: int = 2) -> bytes:
     """Build a small multi-page PDF in memory for fallback tests."""
-    import fitz
+    import pymupdf as fitz
 
     doc = fitz.open()
     for _ in range(pages):

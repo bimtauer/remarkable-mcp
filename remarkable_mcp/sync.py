@@ -1101,7 +1101,7 @@ class RemarkableClient:
         if ext != "pdf":
             return 0, []
         try:
-            import fitz
+            import pymupdf as fitz
 
             with fitz.open(stream=content, filetype="pdf") as pdf:
                 count = pdf.page_count

@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Iterator, Literal, Optional
 
-import fitz
+import pymupdf as fitz
 from PIL import Image
 
 from remarkable_mcp.extract import (

@@ -43,7 +43,7 @@ def _extraction(
 
 
 def _pdf_bytes() -> bytes:
-    import fitz
+    import pymupdf as fitz
 
     pdf = fitz.open()
     pdf.new_page(width=445, height=594)
