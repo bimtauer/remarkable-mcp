@@ -774,43 +774,76 @@ def _upload_via_usb_web(local_path: str, document_name: Optional[str] = None) ->
             raise RuntimeError(f"USB web upload failed: {e}")
 
 
-def _root_scope(items_by_id: dict):
-    """Return ``(in_scope, display_path)`` helpers for REMARKABLE_ROOT_PATH.
+def _root_scope(collection: list, items_by_id: dict):
+    """Return ``(root_id, in_scope, display_path)`` for REMARKABLE_ROOT_PATH.
 
-    Writes resolve exactly like reads: only items below the root are reachable
-    (the root folder itself is not a target), and user-facing paths are
-    root-relative (root ``/Work``: device ``/Work/Project`` <-> ``/Project``).
+    Scope follows Parent IDs, not path strings: an item is reachable only if its
+    parent chain reaches the root folder (the tablet root when unscoped) without
+    passing through the trash or a missing parent. Trashed, orphaned, duplicate or
+    "/"-containing look-alike folders therefore never match. ``root_id`` is None when
+    the configured root is not exactly one live folder; nothing is in scope then.
+    Paths shown to agents are root-relative (root ``/Work``: ``/Work/P`` -> ``/P``).
     """
     # Lazy: tools imports server, which imports this module at load time.
-    from remarkable_mcp.tools import _apply_root_filter, _get_root_path, _is_within_root
+    from remarkable_mcp.tools import _get_root_path
+
+    def ancestry(item) -> Optional[list]:
+        chain, seen = [], {item.ID}
+        parent = getattr(item, "Parent", "") or ""
+        while parent:
+            node = items_by_id.get(parent)
+            if parent == "trash" or node is None or parent in seen:
+                return None
+            chain.append(parent)
+            seen.add(parent)
+            parent = getattr(node, "Parent", "") or ""
+        return chain
 
     root = _get_root_path()
+    root_id: Optional[str] = ""
+    if root != "/":
+        matches = [
+            i.ID
+            for i in collection
+            if i.is_folder
+            and ancestry(i) is not None
+            and get_item_path(i, items_by_id).lower() == root.lower()
+        ]
+        root_id = matches[0] if len(matches) == 1 else None
+        if root_id is None:
+            logger.warning("REMARKABLE_ROOT_PATH %s matches %d live folders", root, len(matches))
 
     def in_scope(item) -> bool:
-        path = get_item_path(item, items_by_id)
-        return _is_within_root(path, root) and (root == "/" or path.lower() != root.lower())
+        if root_id is None or item.ID == root_id:
+            return False
+        chain = ancestry(item)
+        return chain is not None and (root_id == "" or root_id in chain)
 
     def display_path(item) -> str:
-        return _apply_root_filter(get_item_path(item, items_by_id))
+        return _display_path(item, items_by_id)
 
-    return in_scope, display_path
+    return root_id, in_scope, display_path
 
 
 def _scoped_items(collection: list, items_by_id: dict, folders_only: bool = False) -> list:
     """Items reachable under REMARKABLE_ROOT_PATH (for suggestions and listings)."""
-    in_scope, _ = _root_scope(items_by_id)
+    _, in_scope, _ = _root_scope(collection, items_by_id)
     return [i for i in collection if (i.is_folder or not folders_only) and in_scope(i)]
 
 
 def _folder_paths(collection: list, items_by_id: dict) -> list:
     """Root-relative paths of reachable folders, for folder_not_found errors."""
-    _, display_path = _root_scope(items_by_id)
-    return [display_path(i) for i in _scoped_items(collection, items_by_id, folders_only=True)]
+    return [
+        _display_path(i, items_by_id)
+        for i in _scoped_items(collection, items_by_id, folders_only=True)
+    ]
 
 
 def _display_path(item, items_by_id: dict) -> str:
     """Root-relative path of an item, matching what read tools report."""
-    return _root_scope(items_by_id)[1](item)
+    from remarkable_mcp.tools import _apply_root_filter
+
+    return _apply_root_filter(get_item_path(item, items_by_id))
 
 
 def _resolve_parent_id(parent_path: str, items_by_id: dict, collection: list) -> Optional[str]:
@@ -824,19 +857,13 @@ def _resolve_parent_id(parent_path: str, items_by_id: dict, collection: list) ->
     Returns:
         The UUID of the folder, "" for the tablet root, or None if not found
     """
-    from remarkable_mcp.tools import _get_root_path
-
+    root_id, in_scope, display_path = _root_scope(collection, items_by_id)
     target = (parent_path or "").strip("/").lower()
-    root = _get_root_path()
-    if root == "/":
-        if not target:
-            return ""
-    else:
-        # Root-relative "/" is the root folder itself; anything else is below it.
-        target = f"{root.strip('/')}/{target}".strip("/").lower()
+    if root_id is None or not target:
+        return root_id
 
     for item in collection:
-        if item.is_folder and get_item_path(item, items_by_id).strip("/").lower() == target:
+        if item.is_folder and in_scope(item) and display_path(item).strip("/").lower() == target:
             return item.ID
 
     return None
@@ -857,7 +884,7 @@ def _resolve_document(
         The matching item inside the root, or None
     """
     target = name_or_path.lower().strip("/")
-    in_scope, display_path = _root_scope(items_by_id)
+    _, in_scope, display_path = _root_scope(collection, items_by_id)
 
     for item in collection:
         if folders_only and not item.is_folder:
