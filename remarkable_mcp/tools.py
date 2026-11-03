@@ -45,6 +45,7 @@ from remarkable_mcp.exporters import (
     write_native_pdf_export,
 )
 from remarkable_mcp.extract import (
+    PDF_TARGET_LONG_EDGE,
     extract_text_from_document_zip,
     extract_text_from_epub,
     extract_text_from_pdf,
@@ -1704,6 +1705,7 @@ async def _render_png_page(
     background: str,
     render_merged: bool,
     allow_pdf_fallback: bool,
+    scale: float = 1.0,
 ) -> tuple[Optional[bytes], Optional[str], bool, bool]:
     """Render a PNG with the same fallbacks used by remarkable_image."""
     merged_note = None
@@ -1714,6 +1716,7 @@ async def _render_png_page(
             tmp_path,
             page,
             background_color=background,
+            scale=scale,
         )
         is_merged = png_data is not None and merged_note is None
     else:
@@ -1722,18 +1725,27 @@ async def _render_png_page(
             tmp_path,
             page,
             background_color=background,
+            scale=scale,
         )
 
     rendered_via_pdf = False
     if png_data is None and allow_pdf_fallback:
         png_data, has_source_pdf = await run_blocking(
-            render_mapped_pdf_page_from_document_zip, tmp_path, page
+            render_mapped_pdf_page_from_document_zip,
+            tmp_path,
+            page,
+            round(PDF_TARGET_LONG_EDGE * scale),
         )
         rendered_via_pdf = png_data is not None
         if png_data is None and not has_source_pdf:
             pdf_bytes = await run_blocking(download_raw_file, client, target_doc, "pdf")
             if pdf_bytes:
-                png_data = await run_blocking(render_tablet_pdf_page_to_png, pdf_bytes, page)
+                png_data = await run_blocking(
+                    render_tablet_pdf_page_to_png,
+                    pdf_bytes,
+                    page,
+                    round(PDF_TARGET_LONG_EDGE * scale),
+                )
                 rendered_via_pdf = png_data is not None
 
     if png_data is None:
@@ -1742,6 +1754,7 @@ async def _render_png_page(
             tmp_path,
             page,
             background_color=background,
+            scale=scale,
         )
         if full is not None:
             png_data = full[0]
@@ -1758,6 +1771,7 @@ async def remarkable_image(
     compatibility: bool = False,
     include_ocr: bool = False,
     render_merged: Optional[bool] = None,
+    scale: float = 1.0,
 ):
     """
     <usecase>Get an image of a specific page from a reMarkable document.</usecase>
@@ -1806,6 +1820,10 @@ async def remarkable_image(
     - render_merged: PDF compositing mode for PNG: None (default) automatically
       merges PDF-backed pages, True explicitly requests merging, and False returns
       the annotation-only layer. SVG output remains annotation-only.
+    - scale: PNG pixel multiplier, 0.5-3.0 (default 1.0). Raise it when small
+      handwriting is hard to read; clients downscale very large images (a full
+      Letter page gains little beyond ~1.4), so it trades tokens for detail.
+      compatibility=True URIs always resolve at the default scale.
     </parameters>
     <examples>
     - remarkable_image("UI Mockup")  # Get first page as embedded PNG resource
@@ -1817,9 +1835,17 @@ async def remarkable_image(
     - remarkable_image("Notes", include_ocr=True)  # Get image with OCR text extraction
     - remarkable_image("Annotated PDF")  # PDF + annotations composited automatically
     - remarkable_image("Annotated PDF", render_merged=False)  # Annotation layer only
+    - remarkable_image("Annotated PDF", page=3, scale=1.4)  # More detail for small writing
     </examples>
     """
     try:
+        if not 0.5 <= scale <= 3.0:
+            return make_error(
+                error_type="invalid_scale",
+                message=f"Invalid scale: {scale}. Supported range: 0.5-3.0",
+                suggestion="Use scale=1.0 for the default size, up to 3.0 for more detail.",
+            )
+
         # Resolve background color: use provided value or get from env/default
         if background is None:
             background = await run_blocking(get_background_color)
@@ -1992,6 +2018,7 @@ async def remarkable_image(
                         render_tablet_pdf_page_to_png,
                         native_pdf,
                         page,
+                        round(PDF_TARGET_LONG_EDGE * scale),
                     )
                     rendered_via_pdf = png_data is not None
                 else:
@@ -2008,6 +2035,7 @@ async def remarkable_image(
                         background,
                         use_merged,
                         render_merged is not False,
+                        scale,
                     )
 
                 if png_data is None:

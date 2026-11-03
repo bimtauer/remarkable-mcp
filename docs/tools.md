@@ -355,6 +355,7 @@ remarkable_status()
 | `include_ocr` | bool | `False` | Enable OCR on the image |
 | `compatibility` | bool | `False` | Return resource URI instead of embedded resource |
 | `render_merged` | bool \| null | `None` (auto) | PNG compositing mode: auto-merge PDF-backed pages, `True` to request merging explicitly, or `False` for annotations only |
+| `scale` | float | `1.0` | PNG pixel multiplier (0.5–3.0) for small handwriting; compatibility URIs use the default scale |
 
 ### Background Colors
 

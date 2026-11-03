@@ -1352,6 +1352,45 @@ class TestCairoFreeRasterization:
         bare_pdf_image = Image.open(io.BytesIO(bare_pdf_png)).convert("RGB")
         assert ImageChops.difference(image, bare_pdf_image).getbbox() is not None
 
+    def test_scale_enlarges_merged_and_notebook_renders(self, tmp_path):
+        """scale multiplies output pixels so small handwriting keeps detail."""
+        import io
+
+        from PIL import Image
+
+        from remarkable_mcp import notebooks
+        from remarkable_mcp.extract import (
+            render_merged_page_from_document_zip,
+            render_page_full_page_from_document_zip,
+        )
+
+        annotated = tmp_path / "annotated.zip"
+        annotated.write_bytes(
+            _make_notebook_zip(notebooks.page_rm_bytes("Overlay"), pdf_bytes=_make_synthetic_pdf(1))
+        )
+        notebook = tmp_path / "notebook.zip"
+        notebook.write_bytes(_make_notebook_zip(notebooks.page_rm_bytes("Ink")))
+
+        def size(png):
+            return Image.open(io.BytesIO(png)).size
+
+        with _cairo_unavailable():
+            merged_1, _ = render_merged_page_from_document_zip(annotated, page=1)
+            merged_15, note = render_merged_page_from_document_zip(annotated, page=1, scale=1.5)
+            full_1 = render_page_full_page_from_document_zip(notebook, 1)[0]
+            full_15 = render_page_full_page_from_document_zip(notebook, 1, scale=1.5)[0]
+
+        assert note is None
+        for base, scaled in ((size(merged_1), size(merged_15)), (size(full_1), size(full_15))):
+            assert scaled == (round(base[0] * 1.5), round(base[1] * 1.5))
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("scale", [0.1, 3.5])
+    async def test_image_rejects_out_of_range_scale(self, scale):
+        result = await _call_tool("remarkable_image", {"document": "Any", "scale": scale})
+        data = json.loads(result.content[0].text)
+        assert data["_error"]["type"] == "invalid_scale"
+
 
 class TestRenderTabletPdfFallback:
     """Tests for the portable tablet-PDF render fallback (issue #95/#102/#94)."""
