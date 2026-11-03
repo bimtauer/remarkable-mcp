@@ -1391,6 +1391,27 @@ class TestCairoFreeRasterization:
         data = json.loads(result.content[0].text)
         assert data["_error"]["type"] == "invalid_scale"
 
+    def test_render_size_is_capped_for_huge_pages(self, tmp_path, monkeypatch):
+        """A hostile page size or scale cannot allocate past the pixel ceiling."""
+        import io
+
+        from PIL import Image
+
+        from remarkable_mcp import extract, notebooks
+
+        monkeypatch.setattr(extract, "MAX_RENDER_PIXELS", 500_000)
+        annotated = tmp_path / "annotated.zip"
+        annotated.write_bytes(
+            _make_notebook_zip(notebooks.page_rm_bytes("Overlay"), pdf_bytes=_make_synthetic_pdf(1))
+        )
+        with _cairo_unavailable():
+            png, note = extract.render_merged_page_from_document_zip(annotated, page=1, scale=3)
+
+        assert note is None
+        width, height = Image.open(io.BytesIO(png)).size
+        assert width * height <= 500_000
+        assert abs(width / height - 890 / 1188) < 0.01
+
 
 class TestRenderTabletPdfFallback:
     """Tests for the portable tablet-PDF render fallback (issue #95/#102/#94)."""
